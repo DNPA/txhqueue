@@ -8,12 +8,11 @@ try:
         """Helper class for making core hysteresis queue event framework agnostic"""
         # pylint: disable=too-few-public-methods
         def __call__(self, callback, argument):
-            print("DEBUG soon:", type(callback), argument, callback)
             asyncio.get_event_loop().call_later(0.0, callback, argument)
     class AioHysteresisQueue(object):
         """Asyncio based hysteresis queue wrapper"""
-        def __init__(self, low=8000, high=10000, event_handler=None):
-            self.core = _CoreHysteresisQueue(_AioSoon(), low, high, event_handler)
+        def __init__(self, low=8000, high=10000, highwater=None, lowwater=None):
+            self.core = _CoreHysteresisQueue(_AioSoon(), low, high, highwater, lowwater)
         def put(self, entry):
             """Add entry to the queue, returns boolean indicating success
                 will invoke loop.call_later if there is a callback pending for
@@ -35,8 +34,8 @@ try:
                 task.deferLater(reactor, 0.0, callback, argument)
         class TxHysteresisQueue(object):
             """Twisted based hysteresis queue wrapper"""
-            def __init__(self, low=8000, high=10000, event_handler=None):
-                self.core = _CoreHysteresisQueue(_TxSoon(), low, high, event_handler)
+            def __init__(self, low=8000, high=10000, highwater=None, lowwater=None):
+                self.core = _CoreHysteresisQueue(_TxSoon(), low, high, highwater, lowwater)
             def put(self, entry):
                 """Add entry to the queue, returns boolean indicating success
                     will invoke task.deferLater if there is a callback pending
@@ -60,8 +59,8 @@ except ImportError:
             task.deferLater(reactor, 0.0, callback, argument)
     class TxHysteresisQueue(object):
         """Twisted based hysteresis queue wrapper"""
-        def __init__(self, low=8000, high=10000, event_handler=None):
-            self.core = _CoreHysteresisQueue(_TxSoon(), low, high, event_handler)
+        def __init__(self, low=8000, high=10000, highwater=None, lowwater=None):
+            self.core = _CoreHysteresisQueue(_TxSoon(), low, high, highwater, lowwater)
         def put(self, entry):
             """Add entry to the queue, returns boolean indicating success
                 will invoke task.deferLater if there is a callback pending
@@ -76,20 +75,25 @@ except ImportError:
 
 class _CoreHysteresisQueue(object):
     """Simple Twisted based hysteresis queue"""
-    def __init__(self, soon, low, high, event_handler):
+    def __init__(self, soon, low, high, highwater, lowwater):
         self.soon = soon
         self.low = low
         self.high = high
         self.active = True
-        self.event_handler = event_handler
+        self.highwater = highwater
+        self.lowwater = lowwater
         self.msg_queue = queue.Queue()
         self.fetch_msg_queue = queue.Queue()
+        self.dropcount = 0
+        self.okcount = 0
     def put(self, entry):
         """Add entry to the queue, returns boolean indicating success
         will invoke callLater if there is a callback pending for the consumer handler."""
         #Return false imediately if inactivated dueue to hysteresis setting.
         if self.active is False:
+            self.dropcount += 1
             return False
+        self.okcount +=1
         try:
             #See if there is a callback waiting already
             callback = self.fetch_msg_queue.get(block=False)
@@ -107,7 +111,8 @@ class _CoreHysteresisQueue(object):
                 # Queue is full now (high watermark, disable adding untill empty.
                 self.active = False
                 #Call handler of high/low watermark events on earliest opportunity
-                self.soon(self.event_handler, False)
+                self.soon(self.highwater, self.okcount)
+                self.okcount = 0
             return True
     def  get(self, callback):
         """Fetch an entry from the queue, imediately if possible, or remember callback for when an
@@ -125,7 +130,8 @@ class _CoreHysteresisQueue(object):
                 # re-enable the queue now.
                 self.active = True
                 #Call handler of high/low watermark events on earliest opportunity
-                task.deferLater(reactor, 0.0, self.event_handler, True)
+                self.soon(self.lowwater, self.dropcount)
+                self.dropcount = 0
         else:
             # If the queue was empty, add our callback to the callback queue
             self.fetch_msg_queue.put(callback)

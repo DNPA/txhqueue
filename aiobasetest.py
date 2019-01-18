@@ -1,30 +1,30 @@
 #!/usr/bin/env python3
 import asyncio
+import datetime
 from txhqueue import AioHysteresisQueue as HysteresisQueue
 
-def watermark(low):
-    if low:
-        print("Low water mark reached, re-activating HysteresisQueue")
-    else:
-        print("High water mark reached, de-activating HysteresisQueue")
+def lowwatermark(count):
+    now = datetime.datetime.now().isoformat()
+    print(now,"Low water mark reached, re-activating HysteresisQueue. Dropcount = ", count)
+
+def highwatermark(count):
+    now = datetime.datetime.now().isoformat()
+    print(now,"High water mark reached, de-activating HysteresisQueue, OKcount = ", count)
 
 def produce(hq, lp):
     ok = hq.put("har")
-    print("Produced:", ok)
-    lp.call_later(0.5, produce, hq, lp)
+    lp.call_later(0.044, produce, hq, lp)
 
 
 def consume(hq, lp):
     def cb1(msg):
-        print("Consumed:", msg)
-        lp.call_later(1.3, consume, hq, lp)
+        lp.call_later(0.047, consume, hq, lp)
     hq.get(cb1)
 
 
 
-hqueue = HysteresisQueue(low=5, high=10, event_handler=watermark)
-
-loop = asyncio.new_event_loop()
+hqueue = HysteresisQueue(low=5, high=25, highwater=highwatermark, lowwater=lowwatermark)
+loop = asyncio.get_event_loop()
 produce(hqueue, loop)
 consume(hqueue, loop)
 loop.run_forever()
