@@ -1,4 +1,4 @@
-#Python  Hysteresis Queue for Twisted (and asyncio)
+# Python  Hysteresis Queue for Twisted (and asyncio)
 
 This library contains an asynchronous hysteresis queue implementation that works
 with both the Twisted and the asyncio asynchonous frameworks. 
