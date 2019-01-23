@@ -140,4 +140,4 @@ class _CoreHysteresisQueue(object):
                 self.dropcount = 0
         else:
             # If the queue was empty, add our callback to the callback queue
-            self.fetch_msg_queue.put(d.callback)
+            self.fetch_msg_queue.put(d)
