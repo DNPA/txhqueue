@@ -16,9 +16,9 @@ class TxAmqpForwarder(object):
     def __init__(self, hq, converter=None, host='localhost', port=5672, username="guest",
                  password="guest", exchange='foo', routing_key='quz', window=16):
         #pylint: disable=too-many-arguments
-        def loopback(original):
+        def loopback(original, callback):
             """Standard do-nothing converter"""
-            return original
+            callback(original)
         if not HAS_TWISTED_PIKA:
             raise RuntimeError("Can not instantiate TxPikaConsumer because of failing imports.")
         #Remember hysteresis queue we need to be consuming from
@@ -104,32 +104,31 @@ class TxAmqpForwarder(object):
         self.connect_deferred.addCallback(on_connect)
         self.connect_deferred.addErrback(on_connecterror)
     def _process_body(self, body):
-        #We know this is a real broad exception catch clause, but as we need to be flexible
-        #with regards to converters failing, we really do need to be this broad here.
-        #pylint: disable=broad-except
-        try:
-            converted_body = self.converter(body)
-        except Exception as inst:
-            print(inst)
-            converted_body = None
-        def rmq_consume_error(problem):
-            """Something went wrong with channel.basic_publish"""
-            #pylint: disable=unused-argument
+        def process_converted(converted_body):
+            """Callback for body after convert"""
+            def rmq_consume_error(problem):
+                """Something went wrong with channel.basic_publish"""
+                #pylint: disable=unused-argument
+                #pylint: disable=no-member
+                reactor.stop()
+            def on_consumed(argument=None):
+                """Called when channel.basic_publish completes"""
+                #pylint: disable=unused-argument
+                self.hysteresis_queue.get(self._process_body)
             #pylint: disable=no-member
-            reactor.stop()
-        def on_consumed(argument=None):
-            """Called when channel.basic_publish completes"""
-            #pylint: disable=unused-argument
-            self.hysteresis_queue.get(self._process_body)
-        #pylint: disable=no-member
-        if converted_body:
             props = BasicProperties(delivery_mode=2)
             self.publish_deferred = self.channel.basic_publish(
                 properties=props,
                 exchange=self.exchange,
                 routing_key=self.routing_key,
-                body=body)
+                body=converted_body)
             self.publish_deferred.addCallbacks(on_consumed, rmq_consume_error)
-        else:
+        #We know this is a real broad exception catch clause, but as we need to be flexible
+        #with regards to converters failing, we really do need to be this broad here.
+        #pylint: disable=broad-except
+        try:
+            self.converter(body, process_converted)
+        except Exception as inst:
+            print(inst)
             #pylint: disable=no-member
             reactor.stop()

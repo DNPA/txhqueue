@@ -30,9 +30,9 @@ def produce(hqueue):
     hqueue.put('{"msg": "har"}')
 
 
-def converter(msgin):
+def converter(msgin, callback):
     "Dummy converter"
-    return msgin.upper()
+    callback(msgin.upper())
 
 class RateCorrectedProduce(object):
     #pylint: disable=too-few-public-methods
