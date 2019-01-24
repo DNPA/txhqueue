@@ -1,16 +1,16 @@
+"""Setup script for Twisted (+asyncio) Hysteresis Queue"""
 from setuptools import setup, find_packages
-from os import path
 
 setup(
     name='txhqueue',
-    version='0.1.1',
+    version='0.2.0',
     description='Asynchonous hysteresis-queue implementation.',
-    long_description="""A simple asynchronous (both twisted and asyncio) Python 
+    long_description="""A simple asynchronous (both twisted and asyncio) Python
     library for hysteresis queues.""",
     url='https://github.com/DNPA/txhqueue',
     author='Rob M',
     author_email='pdftool@pirod.nl',
-    license='LE-BSD',
+    license='BSD',
     classifiers=[
         'Development Status :: 4 - Beta',
         'Intended Audience :: Developers',

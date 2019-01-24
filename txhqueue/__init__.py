@@ -19,10 +19,12 @@ except ImportError:
         raise ImportError("Missing event loop framework (either Twisted or asyncio will do")
 
 class _AioFutureWrapper(object):
+    #pylint: disable=too-few-public-methods
     """Simple wrapper for giving Future a Deferred compatible callback"""
     def __init__(self, future):
         self.future = future
-    def callback(self,value):
+    def callback(self, value):
+        """Call set_result on future instead of callback on a Deferred"""
         self.future.set_result(value)
 
 class _AioSoon(object):
@@ -51,11 +53,11 @@ class AioHysteresisQueue(object):
     def get(self, callback=None):
         """Fetch an entry from the queue, imediately if possible, or remember
            callback for when an entry becomes available."""
-        f=asyncio.Future()
+        future = asyncio.Future()
         if callback:
-            f.add_done_callback(callback)
-        self.core.get(_AioFutureWrapper(f))
-        return f
+            future.add_done_callback(callback)
+        self.core.get(_AioFutureWrapper(future))
+        return future
 
 class TxHysteresisQueue(object):
     """Twisted based hysteresis queue wrapper"""
@@ -71,25 +73,31 @@ class TxHysteresisQueue(object):
     def get(self, callback=None):
         """Fetch an entry from the queue, imediately if possible,
            or remember callback for when an entry becomes available."""
-        d = defer.Deferred()
+        deferred = defer.Deferred()
         if callback:
-            d.addCallback(callback)
-        self.core.get(d)
-        return d
+            deferred.addCallback(callback)
+        self.core.get(deferred)
+        return deferred
 
 
 
 class _CoreHysteresisQueue(object):
+    #We should fix this with closures later:
+    #pylint: disable=too-many-instance-attributes
     """Simple Twisted based hysteresis queue"""
     def __init__(self, soon, low, high, highwater, lowwater):
+        #We should look at reducing the argument count later.
+        #pylint: disable=too-many-arguments
         self.soon = soon
         self.low = low
         self.high = high
         self.active = True
         self.highwater = highwater
         self.lowwater = lowwater
-        self.msg_queue = queue.Queue()
-        self.fetch_msg_queue = queue.Queue()
+        #self.msg_queue = queue.Queue()
+        #self.fetch_msg_queue = queue.Queue()
+        self.msg_queue = list()
+        self.fetch_msg_queue = list()
         self.dropcount = 0
         self.okcount = 0
     def put(self, entry):
@@ -99,39 +107,46 @@ class _CoreHysteresisQueue(object):
         if self.active is False:
             self.dropcount += 1
             return False
-        self.okcount +=1
+        self.okcount += 1
         try:
             #See if there is a callback waiting already
-            d = self.fetch_msg_queue.get(block=False)
-        except queue.Empty:
-            d = None
-        if d:
+            #d = self.fetch_msg_queue.get(block=False)
+            deferred = self.fetch_msg_queue.pop(0)
+        #except queue.Empty:
+        except IndexError:
+            deferred = None
+        if deferred:
             #If there is a callback waiting schedule for it to be called on
             # the earliest opportunity
-            self.soon(d.callback, entry)
+            self.soon(deferred.callback, entry)
             return True
         else:
             #If no callback is waiting, add entry to the queue
-            self.msg_queue.put(entry)
-            if self.msg_queue.qsize() >= self.high:
+            #self.msg_queue.put(entry)
+            self.msg_queue.append(entry)
+            #if self.msg_queue.qsize() >= self.high:
+            if len(self.msg_queue) >= self.high:
                 # Queue is full now (high watermark, disable adding untill empty.
                 self.active = False
                 #Call handler of high/low watermark events on earliest opportunity
                 self.soon(self.highwater, self.okcount)
                 self.okcount = 0
             return True
-    def  get(self, d):
+    def  get(self, deferred):
         """Fetch an entry from the queue, imediately if possible, or remember callback for when an
            entry becomes available."""
         try:
             #See if we can fetch a value from the queue right now.
-            rval = self.msg_queue.get(block=False)
-        except queue.Empty:
+            #rval = self.msg_queue.get(block=False)
+            rval = self.msg_queue.pop(0)
+        #except queue.Empty:
+        except IndexError:
             rval = None
         if rval:
             #If we can, call callback at earliest opportunity
-            self.soon(d.callback, rval)
-            if self.active is False and self.msg_queue.qsize() <= self.low:
+            self.soon(deferred.callback, rval)
+            #if self.active is False and self.msg_queue.qsize() <= self.low:
+            if self.active is False and len(self.msg_queue) <= self.low:
                 #If adding to the queue was disabled and we just dropped below the low water mark,
                 # re-enable the queue now.
                 self.active = True
@@ -140,4 +155,5 @@ class _CoreHysteresisQueue(object):
                 self.dropcount = 0
         else:
             # If the queue was empty, add our callback to the callback queue
-            self.fetch_msg_queue.put(d)
+            #self.fetch_msg_queue.put(d)
+            self.fetch_msg_queue.append(deferred)
