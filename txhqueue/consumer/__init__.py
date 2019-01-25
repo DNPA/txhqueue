@@ -118,7 +118,7 @@ class TxAmqpForwarder(object):
                 """Called when channel.basic_publish completes"""
                 #pylint: disable=unused-argument
                 self.hysteresis_queue.get(self._process_body)
-            if isinstance(converted_body,bytes) or isinstance(converted_body,bytes):
+            if isinstance(converted_body, (bytes, str)):
                 #pylint: disable=no-member
                 props = BasicProperties(delivery_mode=2)
                 self.publish_deferred = self.channel.basic_publish(
@@ -128,10 +128,12 @@ class TxAmqpForwarder(object):
                     body=converted_body)
                 self.publish_deferred.addCallbacks(on_consumed, rmq_consume_error)
             else:
-                raise TypeError("converter should produce string or bytes")
+                raise TypeError("converter should produce string or bytes, not",
+                                type(converted_body))
+
         #We know this is a real broad exception catch clause, but as we need to be flexible
         #with regards to converters failing, we really do need to be this broad here.
-        #pylint: disable=broad-excepta
+        #pylint: disable=broad-except
         if self.running:
             try:
                 self.converter(body, process_converted)
