@@ -45,6 +45,7 @@ class TxAmqpForwarder(object):
         self.connect_deferred = None
         self.publish_deferred = None
         self.channel = None
+        self.running = True
         #Initial connect
         self._connect()
     def _connect(self):
@@ -54,6 +55,7 @@ class TxAmqpForwarder(object):
             print("   + Problem connecting:", problem.value)
             #Stop the application if we can't connect on a network level.
             #pylint: disable=no-member
+            self.running = False
             reactor.stop()
         def on_connect(connection):
             """Transport level connected. Set callback for application level connect to complete"""
@@ -110,25 +112,31 @@ class TxAmqpForwarder(object):
                 """Something went wrong with channel.basic_publish"""
                 #pylint: disable=unused-argument
                 #pylint: disable=no-member
+                self.running = False
                 reactor.stop()
             def on_consumed(argument=None):
                 """Called when channel.basic_publish completes"""
                 #pylint: disable=unused-argument
                 self.hysteresis_queue.get(self._process_body)
-            #pylint: disable=no-member
-            props = BasicProperties(delivery_mode=2)
-            self.publish_deferred = self.channel.basic_publish(
-                properties=props,
-                exchange=self.exchange,
-                routing_key=self.routing_key,
-                body=converted_body)
-            self.publish_deferred.addCallbacks(on_consumed, rmq_consume_error)
+            if isinstance(converted_body,bytes) or isinstance(converted_body,bytes):
+                #pylint: disable=no-member
+                props = BasicProperties(delivery_mode=2)
+                self.publish_deferred = self.channel.basic_publish(
+                    properties=props,
+                    exchange=self.exchange,
+                    routing_key=self.routing_key,
+                    body=converted_body)
+                self.publish_deferred.addCallbacks(on_consumed, rmq_consume_error)
+            else:
+                raise TypeError("converter should produce string or bytes")
         #We know this is a real broad exception catch clause, but as we need to be flexible
         #with regards to converters failing, we really do need to be this broad here.
-        #pylint: disable=broad-except
-        try:
-            self.converter(body, process_converted)
-        except Exception as inst:
-            print(inst)
-            #pylint: disable=no-member
-            reactor.stop()
+        #pylint: disable=broad-excepta
+        if self.running:
+            try:
+                self.converter(body, process_converted)
+            except Exception as inst:
+                print(inst)
+                #pylint: disable=no-member
+                self.running = False
+                reactor.stop()

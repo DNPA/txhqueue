@@ -71,3 +71,8 @@ f = hq.get()
 f.add_done_callback(consume_one)
 ```
 
+### install
+
+```
+pip3 install .
+```

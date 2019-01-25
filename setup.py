@@ -3,7 +3,7 @@ from setuptools import setup, find_packages
 
 setup(
     name='txhqueue',
-    version='0.2.1',
+    version='0.2.4',
     description='Asynchonous hysteresis-queue implementation.',
     long_description="""A simple asynchronous (both twisted and asyncio) Python
     library for hysteresis queues.""",
