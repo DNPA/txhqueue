@@ -1,7 +1,9 @@
 """Pika RabitMQ consumer for thhqueue"""
 
 try:
+    import logging
     from twisted.internet import protocol, reactor, task
+    from twisted.python import log
     from pika.adapters.twisted_connection import TwistedProtocolConnection
     from pika import ConnectionParameters, PlainCredentials, BasicProperties
     HAS_TWISTED_PIKA = True
@@ -219,7 +221,8 @@ class TxAmqpForwarder(object):
         """Connect or re-connect to AMQP server"""
         def on_connecterror(problem):
             """Problem connecting to AMQP server"""
-            print("   + Problem connecting:", problem.value)
+            log.msg("Problem connecting to AMQP server " + str(problem), level=logging.ERROR)
+            #print("   + Problem connecting:", problem.value)
             #Stop the application if we can't connect on a network level.
             #pylint: disable=no-member
             self.running = False
@@ -228,7 +231,7 @@ class TxAmqpForwarder(object):
             """Transport level connected. Set callback for application level connect to complete"""
             def reconect_in_five(argument=None):
                 """Wait five seconds before reconnecting to server after connection lost"""
-                print("     + Reconnecting in five:", argument)
+                log.msg("Reconnecting in five", logging.INFO)
                 #Wait five seconds before we reconnect.
                 task.deferLater(reactor, 5.0, self._connect)
             def on_connected(connection):
@@ -306,7 +309,7 @@ class TxAmqpForwarder(object):
                 self.converter(body, process_converted)
             #pylint: disable=broad-except
             except Exception as inst:
-                print(inst)
+                log.mst("Error in converter:" + str(inst), logging.ERROR)
                 #pylint: disable=no-member
                 self.running = False
                 reactor.stop()
