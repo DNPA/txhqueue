@@ -50,7 +50,22 @@ hqueue = HysteresisQueue(low=2000, high=5000, highwater=highwatermark, lowwater=
 
 On instantiation we set the high and low water mark for the hysteresis queue and bind the queue to our two water mark event handlers.
 
+
+In case we are interested in the flow through the queue, for the Twisted version of the Hysteresis Queue, it is possible to add an other handle and an interval for when this callback should be invoked with basic flow stats.
+
+```python
+
+def flowstat(stat):
+    log.msg("Flowstat:" + str(stat))
+
+hqueue = HysteresisQueue(low=2000, high=5000,
+                         highwater=highwatermark, lowwater=lowwatermark,
+						 flowstat_cb=flowstat, flowstat_interval=15)
+
+```
+
 Now for usage by the producer and the consumer. Usage by the producer is basically black hole. Just call the put method with the entity you want processed. The put method does return a boolean indicating if the entity was placed on the queue, but note there are only limited usecases where this value is of any use. Remember the queue takes care of counting drops and successfull puts and will output these counts in high water and low water events.
+
 
 ```python
 is_queued = hq.put(entity)
@@ -74,5 +89,5 @@ f.add_done_callback(consume_one)
 ### install
 
 ```
-pip3 install .
+pip3 install txhqueue
 ```
