@@ -5,6 +5,7 @@ try:
     from twisted.internet import task
     from twisted.internet import reactor
     from twisted.internet import defer
+    from twisted.internet.task import LoopingCall
     HAS_TWISTED = True
     try:
         import asyncio
@@ -32,12 +33,18 @@ class _AioSoon(object):
     # pylint: disable=too-few-public-methods
     def __call__(self, callback, argument):
         asyncio.get_event_loop().call_later(0.0, callback, argument)
+    def repeat(self, intervall, command):
+        """Unimplemented"""
+        pass #Currently not implemented for asyncio
 
 class _TxSoon(object):
     """Helper class for making core hysteresis queue event framework agnostic"""
-    # pylint: disable=too-few-public-methods
+    # pylint: disable=too-few-public-methods,no-self-use
     def __call__(self, callback, argument):
         task.deferLater(reactor, 0.0, callback, argument)
+    def repeat(self, interval, command):
+        """Call command every interval seconds"""
+        LoopingCall(command).start(interval)
 
 class AioHysteresisQueue(object):
     """Asyncio based hysteresis queue wrapper"""
@@ -61,10 +68,17 @@ class AioHysteresisQueue(object):
 
 class TxHysteresisQueue(object):
     """Twisted based hysteresis queue wrapper"""
-    def __init__(self, low=8000, high=10000, highwater=None, lowwater=None):
+    def __init__(self,
+                 low=8000, high=10000,
+                 highwater=None, lowwater=None,
+                 flowstat_cb=None, flowstat_interval=60):
+        #pylint: disable=too-many-arguments
         if not HAS_TWISTED:
             raise RuntimeError("Can not instantiate TxHysteresisQueue without twisted")
-        self.core = _CoreHysteresisQueue(_TxSoon(), low, high, highwater, lowwater)
+        self.core = _CoreHysteresisQueue(_TxSoon(),
+                                         low, high,
+                                         highwater, lowwater,
+                                         flowstat_cb, flowstat_interval)
     def put(self, entry):
         """Add entry to the queue, returns boolean indicating success
             will invoke task.deferLater if there is a callback pending
@@ -85,7 +99,8 @@ class _CoreHysteresisQueue(object):
     #We should fix this with closures later:
     #pylint: disable=too-many-instance-attributes
     """Simple Twisted based hysteresis queue"""
-    def __init__(self, soon, low, high, highwater, lowwater):
+    def __init__(self, soon, low, high, highwater, lowwater, flowstat_cb=None,
+                 flowstat_interval=60):
         #We should look at reducing the argument count later.
         #pylint: disable=too-many-arguments
         self.soon = soon
@@ -94,19 +109,37 @@ class _CoreHysteresisQueue(object):
         self.active = True
         self.highwater = highwater
         self.lowwater = lowwater
+        self.flowstat_callback = flowstat_cb
         #self.msg_queue = queue.Queue()
         #self.fetch_msg_queue = queue.Queue()
         self.msg_queue = list()
         self.fetch_msg_queue = list()
         self.dropcount = 0
         self.okcount = 0
+        self.flowstat = dict()
+        self.flowstat["produced"] = 0
+        self.flowstat["consumed"] = 0
+        self.flowstat["dropped"] = 0
+        if flowstat_cb:
+            soon.repeat(flowstat_interval, self.flow_stat_tick)
+    def flow_stat_tick(self):
+        """This method is called periodically if constructor specifies flowstat_cb.
+        This method will call the specified callback with inflow, outflow and drop stats."""
+        curstat = self.flowstat
+        self.flowstat = dict()
+        self.flowstat["produced"] = 0
+        self.flowstat["consumed"] = 0
+        self.flowstat["dropped"] = 0
+        self.flowstat_callback(curstat)
     def put(self, entry):
         """Add entry to the queue, returns boolean indicating success
         will invoke callLater if there is a callback pending for the consumer handler."""
         #Return false imediately if inactivated dueue to hysteresis setting.
         if self.active is False:
             self.dropcount += 1
+            self.flowstat["dropped"] += 1
             return False
+        self.flowstat["produced"] += 1
         self.okcount += 1
         try:
             #See if there is a callback waiting already
@@ -116,9 +149,10 @@ class _CoreHysteresisQueue(object):
         except IndexError:
             deferred = None
         if deferred:
-            #If there is a callback waiting schedule for it to be called on
+            #If there is a callback waiting scheduled for it to be called on
             # the earliest opportunity
             self.soon(deferred.callback, entry)
+            self.flowstat["consumed"] += 1
             return True
         else:
             #If no callback is waiting, add entry to the queue
@@ -145,6 +179,7 @@ class _CoreHysteresisQueue(object):
         if rval:
             #If we can, call callback at earliest opportunity
             self.soon(deferred.callback, rval)
+            self.flowstat["consumed"] += 1
             #if self.active is False and self.msg_queue.qsize() <= self.low:
             if self.active is False and len(self.msg_queue) <= self.low:
                 #If adding to the queue was disabled and we just dropped below the low water mark,
