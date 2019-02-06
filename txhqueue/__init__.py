@@ -126,10 +126,10 @@ class _CoreHysteresisQueue(object):
         """This method is called periodically if constructor specifies flowstat_cb.
         This method will call the specified callback with inflow, outflow and drop stats."""
         curstat = self.flowstat
-        self.flowstat = dict()
-        self.flowstat["produced"] = 0
-        self.flowstat["consumed"] = 0
-        self.flowstat["dropped"] = 0
+        #self.flowstat = dict()
+        #self.flowstat["produced"] = 0
+        #self.flowstat["consumed"] = 0
+        #self.flowstat["dropped"] = 0
         self.flowstat_callback(curstat)
     def put(self, entry):
         """Add entry to the queue, returns boolean indicating success
