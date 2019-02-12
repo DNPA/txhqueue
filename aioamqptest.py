@@ -10,7 +10,6 @@ This isn't a stand alone test, please check:
 import time
 import datetime
 import asyncio
-import datetime
 from txhqueue import AioHysteresisQueue as HysteresisQueue
 from txhqueue.consumer import AioAmqpForwarder as AmqpForwarder
 
@@ -63,4 +62,3 @@ RCP = RateCorrectedProduce(HQUEUE, INTERVAL)
 RCP()
 LOOP.run_forever()
 LOOP.close()
-

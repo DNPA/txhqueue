@@ -26,6 +26,7 @@ def highwatermark(okcount):
     print(now, "High water mark reached, de-activating HysteresisQueue. OK count =", okcount)
 
 def flowstat(obj):
+    """Print flow statistics"""
     print("Flowstat:", obj)
 
 def produce(hqueue):
@@ -55,7 +56,7 @@ def consume(hqueue):
 
 
 HQUEUE = HysteresisQueue(low=5, high=25, highwater=highwatermark, lowwater=lowwatermark,
-        flowstat_cb=flowstat, flowstat_interval=10)
+                         flowstat_cb=flowstat, flowstat_interval=10)
 
 LC = LoopingCall(produce, HQUEUE)
 LC.start(0.044)
